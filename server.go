@@ -19,6 +19,8 @@ func port() string {
 var bindAddr = flag.String("http", ":"+port(), "http listen address")
 
 func main() {
+	flag.Parse()
+
 	http.Handle("/", http.HandlerFunc(hello))
 
 	log.Printf("Listening on %s...", *bindAddr)
