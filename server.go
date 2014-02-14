@@ -29,11 +29,27 @@ func main() {
 }
 
 var t0 = time.Now()
+var hostname string
+
+func init() {
+	var err error
+	hostname, err = os.Hostname()
+	if err != nil {
+		log.Fatal("Hostname:", err)
+	}
+}
 
 func hello(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Hello from Go!")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Uptime:", time.Since(t0))
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "User-Agent:", r.UserAgent())
+	fmt.Fprintln(w, "`hostname`:", hostname)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Request headers:")
+	for k, vs := range r.Header {
+		for _, v := range vs {
+			fmt.Fprintf(w, "  %s: %s\n", k, v)
+		}
+	}
 }
