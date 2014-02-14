@@ -5,10 +5,18 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
-var bindAddr = flag.String("http", ":8080", "http listen address")
+func port() string {
+	if port := os.Getenv("PORT"); port != "" {
+		return port
+	}
+	return "8888"
+}
+
+var bindAddr = flag.String("http", ":"+port(), "http listen address")
 
 func main() {
 	http.Handle("/", http.HandlerFunc(hello))
