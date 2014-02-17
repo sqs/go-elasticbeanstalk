@@ -38,7 +38,7 @@ func main() {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "The commands are:")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "\tdeploy FILE...\t uploads and deploys a source bundle containing the specified files")
+		fmt.Fprintln(os.Stderr, "\tdeploy BUNDLE-DIR\t uploads and deploys a source bundle containing the specified directory")
 		fmt.Fprintln(os.Stderr)
 		flag.PrintDefaults()
 		fmt.Fprintln(os.Stderr)
@@ -75,9 +75,9 @@ func deployCmd(args []string) {
 	bucket := fs.String("bucket", "", "S3 bucket URL (example: https://example-bucket.s3-us-east-1.amazonaws.com)")
 	label := fs.String("label", "", "label base name (suffix of -0, -1, -2, etc., is appended to ensure uniqueness)")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: ebc deploy [OPTS] FILE...\n")
+		fmt.Fprintf(os.Stderr, "Usage: ebc deploy [OPTS] BUNDLE-DIR\n")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "Uploads and deploys a source bundle containing the specified files.")
+		fmt.Fprintln(os.Stderr, "Uploads and deploys a source bundle containing the specified directory.")
 		fmt.Fprintln(os.Stderr)
 		fs.PrintDefaults()
 		fmt.Fprintln(os.Stderr)
@@ -109,9 +109,19 @@ func deployCmd(args []string) {
 		fs.Usage()
 	}
 
-	err = deploy(fs.Args(), *env, *app, bucketURL, *label)
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "exactly 1 bundle dir must be specified")
+		fs.Usage()
+	}
+	bundleDir := fs.Arg(0)
+	bundleDir, err = filepath.Abs(bundleDir)
 	if err != nil {
-		log.Fatal("deploy:", err)
+		log.Fatal(err)
+	}
+
+	err = deploy(bundleDir, *env, *app, bucketURL, *label)
+	if err != nil {
+		log.Fatal("deploy failed: ", err)
 	}
 }
 
@@ -124,7 +134,7 @@ var s3Config = s3util.Config{
 	Client:  http.DefaultClient,
 }
 
-func deploy(paths []string, env, app string, bucketURL *url.URL, label string) error {
+func deploy(bundleDir string, env, app string, bucketURL *url.URL, label string) error {
 	u, fullLabel, err := makeBundleObjectURL(bucketURL, label)
 	if err != nil {
 		return err
@@ -139,7 +149,7 @@ func deploy(paths []string, env, app string, bucketURL *url.URL, label string) e
 	if err != nil {
 		return err
 	}
-	err = writeZipArchive(paths, w)
+	err = writeZipArchive(bundleDir, w)
 	if err != nil {
 		return err
 	}
@@ -232,15 +242,18 @@ func s3ObjectExists(url string) (bool, error) {
 	}
 }
 
-func writeZipArchive(paths []string, w io.Writer) error {
-	args := []string{"-r", "-", "--"}
-	args = append(args, paths...)
-	zip := exec.Command("zip", args...)
+func writeZipArchive(bundleDir string, w io.Writer) error {
+	zip := exec.Command("zip", "-r", "-", ".")
+	zip.Dir = bundleDir
 	zip.Stdout = w
 	if *verbose {
 		zip.Stderr = os.Stderr
 	}
-	return zip.Run()
+	err := zip.Run()
+	if err != nil {
+		return fmt.Errorf("writing zip archive: %s", err)
+	}
+	return nil
 }
 
 func writeZipArchive_native(paths []string, w io.Writer) error {
