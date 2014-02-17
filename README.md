@@ -4,10 +4,10 @@ This is a demonstration of using [Amazon Web Services](https://aws.amazon.com)
 [Elastic Beanstalk](http://aws.amazon.com/elasticbeanstalk/) PaaS with a
 [Go](http://golang.org) web app.
 
-To set up and run the app, run `eb init`, follow the prompts, and then run `git
-aws.push`.
 
-Because Elastic Beanstalk doesn't natively support Go, we have to use a few tricks:
+## Faking Go support in Elastic Beanstalk
+
+Because Elastic Beanstalk doesn't natively support Go, we have to use a few tricks (in the `webapp/` and `worker/` dirs):
 
 1. In `.ebextensions/go.config`, we run a command to install Go on the server, using the
 [commands](http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/customize-containers-ec2.html#customize-containers-format-commands) config feature.
