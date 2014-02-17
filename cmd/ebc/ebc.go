@@ -38,7 +38,7 @@ func main() {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "The commands are:")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "\tbundle FILE...\t uploads a source bundle containing the specified files")
+		fmt.Fprintln(os.Stderr, "\tdeploy FILE...\t uploads and deploys a source bundle containing the specified files")
 		fmt.Fprintln(os.Stderr)
 		flag.PrintDefaults()
 		fmt.Fprintln(os.Stderr)
@@ -63,21 +63,21 @@ func main() {
 	subcmd := flag.Arg(0)
 	remaining := flag.Args()[1:]
 	switch subcmd {
-	case "bundle":
-		bundleCmd(remaining)
+	case "deploy":
+		deployCmd(remaining)
 	}
 }
 
-func bundleCmd(args []string) {
-	fs := flag.NewFlagSet("bundle", flag.ExitOnError)
+func deployCmd(args []string) {
+	fs := flag.NewFlagSet("deploy", flag.ExitOnError)
 	env := fs.String("env", "", "EB environment name")
 	app := fs.String("app", "", "EB application name")
 	bucket := fs.String("bucket", "", "S3 bucket URL (example: https://example-bucket.s3-us-east-1.amazonaws.com)")
 	label := fs.String("label", "", "label base name (suffix of -0, -1, -2, etc., is appended to ensure uniqueness)")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: ebc bundle [OPTS] FILE...\n")
+		fmt.Fprintf(os.Stderr, "Usage: ebc deploy [OPTS] FILE...\n")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "Uploads a source bundle containing the specified files.")
+		fmt.Fprintln(os.Stderr, "Uploads and deploys a source bundle containing the specified files.")
 		fmt.Fprintln(os.Stderr)
 		fs.PrintDefaults()
 		fmt.Fprintln(os.Stderr)
@@ -109,9 +109,9 @@ func bundleCmd(args []string) {
 		fs.Usage()
 	}
 
-	err = bundle(fs.Args(), *env, *app, bucketURL, *label)
+	err = deploy(fs.Args(), *env, *app, bucketURL, *label)
 	if err != nil {
-		log.Fatal("bundle:", err)
+		log.Fatal("deploy:", err)
 	}
 }
 
@@ -124,7 +124,7 @@ var s3Config = s3util.Config{
 	Client:  http.DefaultClient,
 }
 
-func bundle(paths []string, env, app string, bucketURL *url.URL, label string) error {
+func deploy(paths []string, env, app string, bucketURL *url.URL, label string) error {
 	u, fullLabel, err := makeBundleObjectURL(bucketURL, label)
 	if err != nil {
 		return err
