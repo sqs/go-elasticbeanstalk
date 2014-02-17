@@ -2,9 +2,11 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -21,8 +23,12 @@ import (
 )
 
 var verbose = flag.Bool("v", false, "show verbose output")
+var debugKeepTempDirs = flag.Bool("debug.keep-temp-dirs", false, "(debug) don't remove temp dirs")
 
 var elasticbeanstalkURL *url.URL
+var ebClient *elasticbeanstalk.Client
+
+var t0 = time.Now()
 
 func initEnv() {
 	var err error
@@ -30,6 +36,12 @@ func initEnv() {
 	if err != nil {
 		log.Fatal("Parsing ELASTICBEANSTALK_URL:", err)
 	}
+
+	auth, err := aws.EnvAuth()
+	if err != nil {
+		log.Fatal(err)
+	}
+	ebClient = &elasticbeanstalk.Client{BaseURL: elasticbeanstalkURL, Auth: auth, Region: aws.Regions["us-west-2"]}
 }
 
 func main() {
@@ -38,7 +50,9 @@ func main() {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "The commands are:")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "\tdeploy BUNDLE-DIR\t uploads and deploys a source bundle containing the specified directory")
+		fmt.Fprintln(os.Stderr, "\tbundle DIR\t creates a source bundle for the directory (running scripts if they exist)")
+		fmt.Fprintln(os.Stderr, "\tdeploy DIR\t deploys the directory")
+		fmt.Fprintln(os.Stderr, "\tupload BUNDLE-FILE\t uploads the source bundle")
 		fmt.Fprintln(os.Stderr)
 		flag.PrintDefaults()
 		fmt.Fprintln(os.Stderr)
@@ -63,9 +77,198 @@ func main() {
 	subcmd := flag.Arg(0)
 	remaining := flag.Args()[1:]
 	switch subcmd {
+	case "bundle":
+		bundleCmd(remaining)
 	case "deploy":
 		deployCmd(remaining)
+	case "upload":
+		uploadCmd(remaining)
 	}
+}
+
+const bundleScript = ".ebc-bundle"
+
+func bundleCmd(args []string) {
+	fs := flag.NewFlagSet("bundle", flag.ExitOnError)
+	outFile := fs.String("out", "eb-bundle.zip", "output file")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: ebc bundle DIR\n")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintf(os.Stderr, "Creates a source bundle for the specified directory. If the directory contains an %s file, it is executed with an output directory as its first argument, and it's expected to write the source bundle to that directory. Otherwise, if no %s file exists, the specified directory is used as the source bundle.", bundleScript, bundleScript)
+		fmt.Fprintln(os.Stderr)
+		fs.PrintDefaults()
+		fmt.Fprintln(os.Stderr)
+		os.Exit(1)
+	}
+	fs.Parse(args)
+
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "exactly 1 dir must be specified")
+		fs.Usage()
+	}
+	var err error
+	dir := fs.Arg(0)
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fw, err := os.Create(*outFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer fw.Close()
+	err = bundle(dir, fw)
+	if err != nil {
+		log.Fatal("bundle failed: ", err)
+	}
+
+	fi, err := os.Stat(*outFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Wrote bundle file: %s (%.1f MB, took %s)\n", *outFile, float64(fi.Size())/1024/1024, time.Since(t0))
+}
+
+func bundle(dir string, w io.Writer) error {
+	scriptFile := filepath.Join(dir, bundleScript)
+	fi, err := os.Stat(scriptFile)
+	if err == nil && fi.Mode().IsRegular() {
+		if *verbose {
+			log.Printf("Running bundle script %s...", scriptFile)
+		}
+		tmpDir, err := ioutil.TempDir("", "ebc")
+		if err != nil {
+			return err
+		}
+		if *debugKeepTempDirs {
+			log.Printf("Writing bundle output to temp dir %s", tmpDir)
+		} else {
+			defer os.RemoveAll(tmpDir)
+		}
+		script := exec.Command(scriptFile, tmpDir)
+		script.Dir = dir
+		if *verbose {
+			script.Stdout, script.Stderr = os.Stderr, os.Stderr
+		}
+		err = script.Run()
+		if err != nil {
+			return fmt.Errorf("running %s: %s", scriptFile, err)
+		}
+		dir = tmpDir
+	}
+
+	return writeZipArchive(dir, w)
+}
+
+func uploadCmd(args []string) {
+	fs := flag.NewFlagSet("upload", flag.ExitOnError)
+	env := fs.String("env", "", "EB environment name")
+	app := fs.String("app", "", "EB application name")
+	bucket := fs.String("bucket", "", "S3 bucket URL (example: https://example-bucket.s3-us-east-1.amazonaws.com)")
+	label := fs.String("label", "", "label base name (suffix of -0, -1, -2, etc., is appended to ensure uniqueness)")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: ebc upload [OPTS] BUNDLE-FILE\n")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Uploads the specified source bundle.")
+		fmt.Fprintln(os.Stderr)
+		fs.PrintDefaults()
+		fmt.Fprintln(os.Stderr)
+		os.Exit(1)
+	}
+	fs.Parse(args)
+
+	if *env == "" {
+		fmt.Fprintln(os.Stderr, "env is required")
+		fs.Usage()
+	}
+
+	if *app == "" {
+		fmt.Fprintln(os.Stderr, "app is required")
+		fs.Usage()
+	}
+
+	if *bucket == "" {
+		fmt.Fprintln(os.Stderr, "bucket is required")
+		fs.Usage()
+	}
+	bucketURL, err := url.Parse(*bucket)
+	if err != nil {
+		log.Fatal("parsing bucket URL:", err)
+	}
+
+	if *label == "" {
+		fmt.Fprintln(os.Stderr, "label is required")
+		fs.Usage()
+	}
+
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "exactly 1 bundle file must be specified")
+		fs.Usage()
+	}
+	bundleFile := fs.Arg(0)
+	f, err := os.Open(bundleFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fullLabel, err := upload(f, *env, *app, bucketURL, *label)
+	if err != nil {
+		log.Fatal("upload failed: ", err)
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Uploaded %s as label %q (%d MB, took %s)\n", bundleFile, fullLabel, float64(fi.Size())/1024/1024, time.Since(t0))
+}
+
+var s3Config = s3util.Config{
+	Keys: &s3.Keys{
+		AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
+		SecretKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+	},
+	Service: s3.DefaultService,
+	Client:  http.DefaultClient,
+}
+
+func upload(r io.Reader, env, app string, bucketURL *url.URL, label string) (string, error) {
+	u, fullLabel, err := makeBundleObjectURL(bucketURL, label)
+	if err != nil {
+		return "", err
+	}
+
+	if *verbose {
+		log.Printf("Uploading source bundle to %s...", u.String())
+	}
+
+	w, err := s3util.Create(u.String(), nil, &s3Config)
+	if err != nil {
+		return "", err
+	}
+	_, err = io.Copy(w, r)
+	if err != nil {
+		return "", err
+	}
+	err = w.Close()
+	if err != nil {
+		return "", err
+	}
+
+	if *verbose {
+		log.Printf("Creating application version %q...", fullLabel)
+	}
+	err = ebClient.CreateApplicationVersion(&elasticbeanstalk.CreateApplicationVersionParams{
+		ApplicationName:      app,
+		VersionLabel:         fullLabel,
+		SourceBundleS3Bucket: "sg-eb-source-bundles",
+		SourceBundleS3Key:    strings.TrimPrefix(u.Path, "/"),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return fullLabel, nil
 }
 
 func deployCmd(args []string) {
@@ -75,9 +278,9 @@ func deployCmd(args []string) {
 	bucket := fs.String("bucket", "", "S3 bucket URL (example: https://example-bucket.s3-us-east-1.amazonaws.com)")
 	label := fs.String("label", "", "label base name (suffix of -0, -1, -2, etc., is appended to ensure uniqueness)")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: ebc deploy [OPTS] BUNDLE-DIR\n")
+		fmt.Fprintf(os.Stderr, "Usage: ebc deploy [OPTS] DIR\n")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "Uploads and deploys a source bundle containing the specified directory.")
+		fmt.Fprintln(os.Stderr, "Bundles and deploys the specified directory.")
 		fmt.Fprintln(os.Stderr)
 		fs.PrintDefaults()
 		fmt.Fprintln(os.Stderr)
@@ -113,69 +316,28 @@ func deployCmd(args []string) {
 		fmt.Fprintln(os.Stderr, "exactly 1 bundle dir must be specified")
 		fs.Usage()
 	}
-	bundleDir := fs.Arg(0)
-	bundleDir, err = filepath.Abs(bundleDir)
+	dir := fs.Arg(0)
+	dir, err = filepath.Abs(dir)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = deploy(bundleDir, *env, *app, bucketURL, *label)
+	err = deploy(dir, *env, *app, bucketURL, *label)
 	if err != nil {
 		log.Fatal("deploy failed: ", err)
 	}
+	fmt.Printf("Deploy initiated (took %s)\n", time.Since(t0))
 }
 
-var s3Config = s3util.Config{
-	Keys: &s3.Keys{
-		AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
-		SecretKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
-	},
-	Service: s3.DefaultService,
-	Client:  http.DefaultClient,
-}
-
-func deploy(bundleDir string, env, app string, bucketURL *url.URL, label string) error {
-	u, fullLabel, err := makeBundleObjectURL(bucketURL, label)
+func deploy(dir string, env, app string, bucketURL *url.URL, label string) error {
+	var buf bytes.Buffer
+	err := bundle(dir, &buf)
 	if err != nil {
 		return err
 	}
 
-	var t0 time.Time
-	if *verbose {
-		t0 = time.Now()
-		log.Printf("Uploading source bundle to %s...", u.String())
-	}
-	w, err := s3util.Create(u.String(), nil, &s3Config)
-	if err != nil {
-		return err
-	}
-	err = writeZipArchive(bundleDir, w)
-	if err != nil {
-		return err
-	}
-	if *verbose {
-		log.Printf("Finished uploading source bundle (took %s).", time.Since(t0))
-	}
-	err = w.Close()
-	if err != nil {
-		return err
-	}
-
-	auth, err := aws.EnvAuth()
-	if err != nil {
-		return err
-	}
-	c := elasticbeanstalk.Client{BaseURL: elasticbeanstalkURL, Auth: auth, Region: aws.Regions["us-west-2"]}
-
-	if *verbose {
-		log.Printf("Creating application version %q...", fullLabel)
-	}
-	err = c.CreateApplicationVersion(&elasticbeanstalk.CreateApplicationVersionParams{
-		ApplicationName:      app,
-		VersionLabel:         fullLabel,
-		SourceBundleS3Bucket: "sg-eb-source-bundles",
-		SourceBundleS3Key:    strings.TrimPrefix(u.Path, "/"),
-	})
+	var fullLabel string
+	fullLabel, err = upload(&buf, env, app, bucketURL, label)
 	if err != nil {
 		return err
 	}
@@ -183,7 +345,7 @@ func deploy(bundleDir string, env, app string, bucketURL *url.URL, label string)
 	if *verbose {
 		log.Printf("Updating environment %q to use version %q...", env, fullLabel)
 	}
-	err = c.UpdateEnvironment(&elasticbeanstalk.UpdateEnvironmentParams{
+	err = ebClient.UpdateEnvironment(&elasticbeanstalk.UpdateEnvironmentParams{
 		EnvironmentName: env,
 		VersionLabel:    fullLabel,
 	})
@@ -242,9 +404,9 @@ func s3ObjectExists(url string) (bool, error) {
 	}
 }
 
-func writeZipArchive(bundleDir string, w io.Writer) error {
+func writeZipArchive(dir string, w io.Writer) error {
 	zip := exec.Command("zip", "-r", "-", ".")
-	zip.Dir = bundleDir
+	zip.Dir = dir
 	zip.Stdout = w
 	if *verbose {
 		zip.Stderr = os.Stderr

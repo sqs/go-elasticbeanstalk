@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +18,15 @@ func port() string {
 }
 
 var bindAddr = flag.String("http", ":"+port(), "http listen address")
+var gitCommitID string
+
+func init() {
+	data, err := ioutil.ReadFile("./.git-commit-id")
+	if err != nil {
+		gitCommitID = fmt.Sprintf("error: %s", err)
+	}
+	gitCommitID = string(data)
+}
 
 func main() {
 	flag.Parse()
@@ -44,6 +54,7 @@ func init() {
 func hello(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Hello from Go!")
 	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Git commit ID:", gitCommitID)
 	fmt.Fprintln(w, "Uptime:", time.Since(t0))
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "`hostname`:", hostname)

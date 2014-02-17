@@ -1,0 +1,10 @@
+#!/bin/sh
+outdir="$1"
+
+echo BUNDLE SCRIPT: $outdir
+
+go build -o "$outdir"/server server.go && \
+cp -R .ebextensions static "$outdir" && \
+git rev-parse HEAD > "$outdir"/.git-commit-id && \
+
+echo BUNDLE SCRIPT: done
