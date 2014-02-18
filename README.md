@@ -50,6 +50,15 @@ Now, check the AWS Elastic Beanstalk dashboard to verify that a new application
 is being deployed. Once it's complete, browsing to the environment's URL should
 display the "Hello from Go!" text, along with some debugging info. You're done!
 
+#### Deploying from multiple branches
+
+The eb and ebc tools both support deploying from multiple branches. When you
+switch to another branch (with `git checkout`), run `eb branch` to configure the
+branch's deployment. The ebc tool reads eb's configuration for a branch, so
+there are no extra steps beyond configuring eb correctly. To inspect the
+configuration that ebc will use to deploy, run `ebc -dir=DIR deploy -h`.
+
+
 
 ## Implementation details
 
