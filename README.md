@@ -58,6 +58,8 @@ branch's deployment. The ebc tool reads eb's configuration for a branch, so
 there are no extra steps beyond configuring eb correctly. To inspect the
 configuration that ebc will use to deploy, run `ebc -dir=DIR deploy -h`.
 
+The sample `webapp` in this repository displays the git branch used to deploy
+it, so you can verify that branch deployment was successful.
 
 
 ## Implementation details
