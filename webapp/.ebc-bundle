@@ -6,5 +6,6 @@ echo BUNDLE SCRIPT: $outdir
 go build -o "$outdir"/server server.go && \
 cp -R .ebextensions static "$outdir" && \
 git rev-parse HEAD > "$outdir"/.git-commit-id && \
+git rev-parse --abbrev-ref HEAD > "$outdir"/.git-branch && \
 
 echo BUNDLE SCRIPT: done
