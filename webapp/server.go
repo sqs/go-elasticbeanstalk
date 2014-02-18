@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -25,13 +26,13 @@ func init() {
 	if err != nil {
 		gitCommitID = fmt.Sprintf("error: %s", err)
 	}
-	gitCommitID = string(data)
+	gitCommitID = strings.TrimSpace(string(data))
 
 	data, err = ioutil.ReadFile("./.git-branch")
 	if err != nil {
 		gitBranch = fmt.Sprintf("error: %s", err)
 	}
-	gitBranch = string(data)
+	gitBranch = strings.TrimSpace(string(data))
 }
 
 func main() {
