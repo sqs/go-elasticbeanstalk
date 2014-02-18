@@ -1,8 +1,13 @@
 # go-elasticbeanstalk
 
-This is a demonstration of using [Amazon Web Services](https://aws.amazon.com)
-[Elastic Beanstalk](http://aws.amazon.com/elasticbeanstalk/) PaaS with a
-[Go](http://golang.org) web app.
+This repository contains:
+
+* **ebc**, a command-line tool that simplifies deployment of binaries to [AWS](https://aws.amazon.com)
+[Elastic Beanstalk](http://aws.amazon.com/elasticbeanstalk/)
+* a simple [elasticbeanstalk API client package](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk/symbols/go/github.com/sqs/go-elasticbeanstalk/elasticbeanstalk) written in [Go](http://golang.org)
+* a sample Go web app that can be deployed to AWS Elastic Beanstalk, along with the necessary configuration to work around the lack of official Go support (see *Implementation details* below)
+
+[**Documentation on Sourcegraph**](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk)
 
 ## ebc command-line client for AWS Elastic Beanstalk
 
