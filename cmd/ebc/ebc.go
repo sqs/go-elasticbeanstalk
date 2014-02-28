@@ -61,7 +61,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Environment variables:")
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "\tAWS_ACCESS_KEY_ID")
-		fmt.Fprintln(os.Stderr, "\tAWS_SECRET_ACCESS_KEY")
+		fmt.Fprintln(os.Stderr, "\tAWS_SECRET_KEY")
 		fmt.Fprintln(os.Stderr, "\tELASTICBEANSTALK_URL (default: https://elasticbeanstalk.us-east-1.amazonaws.com)")
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "Run `ebc command -h` for more information.")
@@ -293,7 +293,7 @@ func uploadCmd(args []string) {
 var s3Config = s3util.Config{
 	Keys: &s3.Keys{
 		AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
-		SecretKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		SecretKey: os.Getenv("AWS_SECRET_KEY"),
 	},
 	Service: s3.DefaultService,
 	Client:  http.DefaultClient,
