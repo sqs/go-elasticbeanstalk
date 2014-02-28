@@ -3,8 +3,11 @@ package elasticbeanstalk
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"reflect"
 	"testing"
+
+	"github.com/kr/pretty"
 )
 
 func TestDescribeEnvironments(t *testing.T) {
@@ -79,6 +82,37 @@ func TestUpdateEnvironment(t *testing.T) {
 	})
 
 	err := client.UpdateEnvironment(&UpdateEnvironmentParams{})
+	if err != nil {
+		t.Errorf("UpdateEnvironment returned error: %v", err)
+	}
+}
+
+func TestUpdateEnvironment_OptionSettings_Env(t *testing.T) {
+	setup()
+	defer teardown()
+
+	wantParams := url.Values{
+		"Operation":                          []string{"UpdateEnvironment"},
+		"EnvironmentName":                    []string{"env"},
+		"OptionSettings.member.1.Namespace":  []string{"aws:elasticbeanstalk:application:environment"},
+		"OptionSettings.member.1.OptionName": []string{"K0"},
+		"OptionSettings.member.1.Value":      []string{"V0"},
+		"OptionSettings.member.2.Namespace":  []string{"aws:elasticbeanstalk:application:environment"},
+		"OptionSettings.member.2.OptionName": []string{"K1"},
+		"OptionSettings.member.2.Value":      []string{"V1"},
+	}
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "POST")
+		if p := r.URL.Query(); !reflect.DeepEqual(p, wantParams) {
+			t.Errorf("UpdateEnvironment got params %# v, want %# v", pretty.Formatter(p), pretty.Formatter(wantParams))
+		}
+	})
+
+	p := &UpdateEnvironmentParams{EnvironmentName: "env"}
+	p.AddEnv("K0", "V0")
+	p.AddEnv("K1", "V1")
+	err := client.UpdateEnvironment(p)
 	if err != nil {
 		t.Errorf("UpdateEnvironment returned error: %v", err)
 	}

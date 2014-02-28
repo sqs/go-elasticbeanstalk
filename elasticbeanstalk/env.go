@@ -1,6 +1,8 @@
 package elasticbeanstalk
 
 import (
+	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/google/go-querystring/query"
@@ -66,7 +68,47 @@ func (c *Client) DescribeEnvironments(params *DescribeEnvironmentsParams) ([]*En
 
 type UpdateEnvironmentParams struct {
 	EnvironmentName string
-	VersionLabel    string
+	VersionLabel    string `url:",omitempty"`
+
+	OptionSettings []ConfigurationOptionSetting `url:"-"`
+}
+
+// AddEnv adds the specified environment variable name and value to
+// OptionSettings.
+func (p *UpdateEnvironmentParams) AddEnv(name, value string) {
+	p.OptionSettings = append(p.OptionSettings, ConfigurationOptionSetting{
+		Namespace:  "aws:elasticbeanstalk:application:environment",
+		OptionName: name,
+		Value:      value,
+	})
+}
+
+// optionSettingsValues returns a url.Values for the
+// (UpdateEnvironmentParams).OptionSettings field entries. Each entry yields 3
+// keys whose names are prefixed with `OptionSettings.member.N.`.
+func (p *UpdateEnvironmentParams) optionSettingsValues() url.Values {
+	if len(p.OptionSettings) == 0 {
+		return nil
+	}
+	v := make(url.Values)
+	for i, s := range p.OptionSettings {
+		kp := fmt.Sprintf("OptionSettings.member.%d", i+1)
+		v.Set(kp+".Namespace", s.Namespace)
+		v.Set(kp+".OptionName", s.OptionName)
+		v.Set(kp+".Value", s.Value)
+	}
+	return v
+}
+
+// ConfigurationOptionSetting is a specification identifying an individual
+// configuration option along with its current value.
+//
+// See
+// http://docs.aws.amazon.com/elasticbeanstalk/latest/api/API_ConfigurationOptionSetting.html.
+type ConfigurationOptionSetting struct {
+	Namespace  string
+	OptionName string
+	Value      string
 }
 
 func (c *Client) UpdateEnvironment(params *UpdateEnvironmentParams) error {
@@ -74,5 +116,11 @@ func (c *Client) UpdateEnvironment(params *UpdateEnvironmentParams) error {
 	if err != nil {
 		return err
 	}
+
+	osv := params.optionSettingsValues()
+	for k, vs := range osv {
+		v[k] = vs
+	}
+
 	return c.Do("POST", "UpdateEnvironment", v, nil)
 }
