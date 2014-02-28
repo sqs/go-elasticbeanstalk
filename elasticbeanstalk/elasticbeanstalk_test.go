@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 )
 
 // Testing scheme adapted from go-github.
@@ -42,4 +43,12 @@ func testMethod(t *testing.T, r *http.Request, want string) {
 	if want != r.Method {
 		t.Errorf("Request method = %v, want %v", r.Method, want)
 	}
+}
+
+func mustParseTime(t *testing.T, timeStr string) time.Time {
+	tm, err := time.Parse(time.RFC3339Nano, timeStr)
+	if err != nil {
+		t.Fatal("time.Parse(time.RFC3339Nano, %q) returned error: %v", timeStr, err)
+	}
+	return tm
 }
