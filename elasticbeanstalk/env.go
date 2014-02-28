@@ -14,5 +14,5 @@ func (c *Client) UpdateEnvironment(params *UpdateEnvironmentParams) error {
 	if err != nil {
 		return err
 	}
-	return c.Do("POST", "UpdateEnvironment", v)
+	return c.Do("POST", "UpdateEnvironment", v, nil)
 }

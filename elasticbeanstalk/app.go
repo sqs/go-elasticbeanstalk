@@ -22,5 +22,5 @@ func (c *Client) CreateApplicationVersion(params *CreateApplicationVersionParams
 	if err != nil {
 		return err
 	}
-	return c.Do("POST", "CreateApplicationVersion", v)
+	return c.Do("POST", "CreateApplicationVersion", v, nil)
 }

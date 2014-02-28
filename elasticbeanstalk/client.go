@@ -1,6 +1,7 @@
 package elasticbeanstalk
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -14,17 +15,26 @@ type Client struct {
 	BaseURL    *url.URL
 	Auth       aws.Auth
 	Region     aws.Region
-	HTTPClient *http.Client
+	httpClient *http.Client
 }
 
-func (c *Client) Do(method string, operation string, params url.Values) error {
+func NewClient(httpClient *http.Client) *Client {
+	return &Client{httpClient: httpClient}
+}
+
+func (c *Client) Do(method string, operation string, params url.Values, respData interface{}) error {
 	url := c.BaseURL.ResolveReference(&url.URL{RawQuery: fmt.Sprintf("Operation=%s&%s", operation, params.Encode())})
 	r, err := http.NewRequest(method, url.String(), nil)
 	r.Header.Set("X-Amz-Date", time.Now().UTC().Format(aws.ISO8601BasicFormat))
 	signer := aws.NewV4Signer(c.Auth, "elasticbeanstalk", c.Region)
 	signer.Sign(r)
 
-	resp, err := c.httpClient().Do(r)
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	resp, err := httpClient.Do(r)
 	if err != nil {
 		return err
 	}
@@ -36,12 +46,13 @@ func (c *Client) Do(method string, operation string, params url.Values) error {
 		}
 		return fmt.Errorf("http status code %d (%s): %s", resp.StatusCode, http.StatusText(resp.StatusCode), msg)
 	}
-	return nil
 
-}
-func (c *Client) httpClient() *http.Client {
-	if c.HTTPClient == nil {
-		return http.DefaultClient
+	if respData != nil {
+		err = json.NewDecoder(resp.Body).Decode(respData)
+		if err != nil {
+			return err
+		}
 	}
-	return c.HTTPClient
+
+	return nil
 }
