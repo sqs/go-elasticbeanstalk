@@ -1,0 +1,9 @@
+#!/bin/sh
+
+EBC_ENV=$1
+EBC_APP=$2
+
+echo EBC_ENV=$1
+echo EBC_APP=$2
+echo EBC_SET_BY_VARS_SCRIPT=i-was-set-from-a-script
+

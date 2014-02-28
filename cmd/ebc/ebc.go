@@ -414,17 +414,61 @@ func deploy(dir string, env, app string, bucketURL *url.URL, label string) error
 		return err
 	}
 
-	if *verbose {
-		log.Printf("Updating environment %q to use version %q...", env, fullLabel)
-	}
-	err = ebClient.UpdateEnvironment(&elasticbeanstalk.UpdateEnvironmentParams{
+	p := &elasticbeanstalk.UpdateEnvironmentParams{
 		EnvironmentName: env,
 		VersionLabel:    fullLabel,
-	})
+	}
+
+	// Get env vars
+	err = setEnvVarsFromScript(dir, env, app, p)
 	if err != nil {
 		return err
 	}
 
+	if *verbose {
+		log.Printf("Updating environment %q to use version %q...", env, fullLabel)
+	}
+	err = ebClient.UpdateEnvironment(p)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// setEnvVarsFromScript invokes the executable named `.ebc-vars` in dir to
+// obtain environment variables to set in the environment. The output is
+// expected to be of the form "FOO=BAR\nBAZ=QUX\n" (empty lines are ignored).
+func setEnvVarsFromScript(dir, env, app string, p *elasticbeanstalk.UpdateEnvironmentParams) error {
+	scriptFile := filepath.Join(dir, ".ebc-vars")
+	fi, err := os.Stat(scriptFile)
+	if err == nil && fi.Mode().IsRegular() {
+		if *verbose {
+			log.Printf("Running vars script %s...", scriptFile)
+		}
+		script := exec.Command(scriptFile, env, app)
+		script.Dir = dir
+		if *verbose {
+			script.Stderr = os.Stderr
+		}
+		out, err := script.Output()
+		if err != nil {
+			return fmt.Errorf("running %s: %s", scriptFile, err)
+		}
+		lines := bytes.Split(out, []byte("\n"))
+		for _, line := range lines {
+			if len(line) > 0 {
+				parts := bytes.SplitN(line, []byte("="), 2)
+				if len(parts) != 2 {
+					return fmt.Errorf("invalid format for env: %q", line)
+				}
+				if *verbose {
+					log.Printf(" - %s", parts[0])
+				}
+				p.AddEnv(string(parts[0]), string(parts[1]))
+			}
+		}
+	}
 	return nil
 }
 

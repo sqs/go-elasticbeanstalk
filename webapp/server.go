@@ -67,6 +67,13 @@ func hello(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "`hostname`:", hostname)
 	fmt.Fprintln(w)
+	fmt.Fprintln(w, "EBC_* env vars:")
+	for _, v := range os.Environ() {
+		if strings.HasPrefix(v, "EBC_") {
+			fmt.Fprintf(w, "  %s\n", v)
+		}
+	}
+	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Request headers:")
 	for k, vs := range r.Header {
 		for _, v := range vs {
