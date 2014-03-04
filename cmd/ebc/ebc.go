@@ -230,7 +230,6 @@ func uploadCmd(args []string) {
 	}
 
 	fs := flag.NewFlagSet("upload", flag.ExitOnError)
-	env := fs.String("env", df.env, "EB environment name")
 	app := fs.String("app", df.app, "EB application name")
 	bucket := fs.String("bucket", df.bucketURL, "S3 bucket URL (example: https://example-bucket.s3-us-east-1.amazonaws.com)")
 	label := fs.String("label", df.label, "label base name (suffix of -0, -1, -2, etc., is appended to ensure uniqueness)")
@@ -244,11 +243,6 @@ func uploadCmd(args []string) {
 		os.Exit(1)
 	}
 	fs.Parse(args)
-
-	if *env == "" {
-		fmt.Fprintln(os.Stderr, "env is required")
-		fs.Usage()
-	}
 
 	if *app == "" {
 		fmt.Fprintln(os.Stderr, "app is required")
@@ -279,7 +273,7 @@ func uploadCmd(args []string) {
 		log.Fatal(err)
 	}
 
-	fullLabel, err := upload(f, *env, *app, bucketURL, *label)
+	fullLabel, err := upload(f, *app, bucketURL, *label)
 	if err != nil {
 		log.Fatal("upload failed: ", err)
 	}
@@ -299,7 +293,7 @@ var s3Config = s3util.Config{
 	Client:  http.DefaultClient,
 }
 
-func upload(r io.Reader, env, app string, bucketURL *url.URL, label string) (string, error) {
+func upload(r io.Reader, app string, bucketURL *url.URL, label string) (string, error) {
 	u, fullLabel, err := makeBundleObjectURL(bucketURL, label)
 	if err != nil {
 		return "", err
@@ -409,7 +403,7 @@ func deploy(dir string, env, app string, bucketURL *url.URL, label string) error
 	}
 
 	var fullLabel string
-	fullLabel, err = upload(&buf, env, app, bucketURL, label)
+	fullLabel, err = upload(&buf, app, bucketURL, label)
 	if err != nil {
 		return err
 	}
