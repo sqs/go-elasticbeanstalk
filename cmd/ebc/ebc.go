@@ -338,8 +338,10 @@ func s3BucketFromURL(u *url.URL) string {
 
 func deployCmd(args []string) {
 	df, err := readDefaults(*dir)
-	if err != nil && *verbose {
-		log.Printf("Warning: couldn't read defaults: %s", err)
+	if err != nil {
+		if *verbose {
+			log.Printf("Warning: couldn't read defaults: %s. Flag values must be explicitly specified.", err)
+		}
 		df = new(defaults)
 	}
 
