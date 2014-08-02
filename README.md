@@ -77,6 +77,8 @@ it, so you can verify that branch deployment was successful.
 
 ### Faking Go support in Elastic Beanstalk
 
+**NOTE:** Since this section was written, Elastic Beanstalk added Docker support, which lets you run Go apps. If you use Docker, ignore this section. The `ebc` tool is still useful even if you are using Docker (or any other language, for that matter).
+
 Because Elastic Beanstalk doesn't natively support Go, we have to use a few tricks (in the `webapp/` and `worker/` dirs):
 
 1. In `.ebextensions/go.config`, we run a command to install Go on the server, using the
