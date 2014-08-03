@@ -33,17 +33,24 @@ var ebClient *elasticbeanstalk.Client
 var t0 = time.Now()
 
 func initEnv() {
+	elasticbeanstalkURLStr := os.Getenv("ELASTICBEANSTALK_URL")
+	if elasticbeanstalkURLStr == "" {
+		log.Fatal("Env var ELASTICBEANSTALK_URL is not set. Set it to 'https://' plus the hostname for your region at http://docs.aws.amazon.com/general/latest/gr/rande.html#elasticbeanstalk_region.")
+	}
+
 	var err error
-	elasticbeanstalkURL, err = url.Parse(os.Getenv("ELASTICBEANSTALK_URL"))
+	elasticbeanstalkURL, err = url.Parse(elasticbeanstalkURLStr)
 	if err != nil {
 		log.Fatal("Parsing ELASTICBEANSTALK_URL:", err)
 	}
+
+	region := strings.Split(elasticbeanstalkURL.Host, ".")[1]
 
 	auth, err := aws.EnvAuth()
 	if err != nil {
 		log.Fatal(err)
 	}
-	ebClient = &elasticbeanstalk.Client{BaseURL: elasticbeanstalkURL, Auth: auth, Region: aws.Regions["us-west-2"]}
+	ebClient = &elasticbeanstalk.Client{BaseURL: elasticbeanstalkURL, Auth: auth, Region: aws.Regions[region]}
 }
 
 func main() {
@@ -60,9 +67,9 @@ func main() {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "Environment variables:")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "\tAWS_ACCESS_KEY_ID")
-		fmt.Fprintln(os.Stderr, "\tAWS_SECRET_KEY")
-		fmt.Fprintln(os.Stderr, "\tELASTICBEANSTALK_URL (default: https://elasticbeanstalk.us-east-1.amazonaws.com)")
+		fmt.Fprintf(os.Stderr, "\tAWS_ACCESS_KEY_ID (is set: %v)\n", os.Getenv("AWS_ACCESS_KEY_ID") != "")
+		fmt.Fprintf(os.Stderr, "\tAWS_SECRET_KEY (is set: %v)\n", os.Getenv("AWS_SECRET_KEY") != "")
+		fmt.Fprintf(os.Stderr, "\tELASTICBEANSTALK_URL (current value: %q)\n", os.Getenv("ELASTICBEANSTALK_URL"))
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "Run `ebc command -h` for more information.")
 		os.Exit(1)
@@ -231,7 +238,7 @@ func uploadCmd(args []string) {
 
 	fs := flag.NewFlagSet("upload", flag.ExitOnError)
 	app := fs.String("app", df.app, "EB application name")
-	bucket := fs.String("bucket", df.bucketURL, "S3 bucket URL (example: https://example-bucket.s3-us-east-1.amazonaws.com)")
+	bucket := fs.String("bucket", df.bucketURL, "S3 bucket URL (example: https://example-bucket.s3-us-west-2.amazonaws.com)")
 	label := fs.String("label", df.label, "label base name (suffix of -0, -1, -2, etc., is appended to ensure uniqueness)")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: ebc upload [OPTS] BUNDLE-FILE\n")
@@ -296,7 +303,7 @@ var s3Config = s3util.Config{
 func upload(r io.Reader, app string, bucketURL *url.URL, label string) (string, error) {
 	u, fullLabel, err := makeBundleObjectURL(bucketURL, label)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("making bundle S3 object URL failed: %s", err)
 	}
 
 	if *verbose {
@@ -305,7 +312,7 @@ func upload(r io.Reader, app string, bucketURL *url.URL, label string) (string, 
 
 	w, err := s3util.Create(u.String(), nil, &s3Config)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("creating S3 object failed: %s", err)
 	}
 	_, err = io.Copy(w, r)
 	if err != nil {
@@ -319,21 +326,25 @@ func upload(r io.Reader, app string, bucketURL *url.URL, label string) (string, 
 	if *verbose {
 		log.Printf("Creating application version %q...", fullLabel)
 	}
-	err = ebClient.CreateApplicationVersion(&elasticbeanstalk.CreateApplicationVersionParams{
+	params := &elasticbeanstalk.CreateApplicationVersionParams{
 		ApplicationName:      app,
 		VersionLabel:         fullLabel,
 		SourceBundleS3Bucket: s3BucketFromURL(u),
 		SourceBundleS3Key:    strings.TrimPrefix(u.Path, "/"),
-	})
-	if err != nil {
-		return "", err
+	}
+	if err := ebClient.CreateApplicationVersion(params); err != nil {
+		return "", fmt.Errorf("creating EB application version (params: %+v): %s", params, err)
 	}
 
 	return fullLabel, nil
 }
 
 func s3BucketFromURL(u *url.URL) string {
-	return strings.Split(u.Host, ".")[0]
+	parts := strings.Split(u.Host, ".")
+	if len(parts) < 3 {
+		log.Fatalf(`Invalid S3 bucket URL %q. ebc expects a bucket url of the form "BUCKET.s3[-REGION].amazonaws.com" (such as "example-bucket.s3-us-west-2.amazonaws.com"), not "s3[-REGION].amazonaws.com/BUCKET".\n\nAlso, note that the S3 us-east-1 endpoint hostname is s3-external-1.amazonaws.com, not s3-us-east-1.amazonaws.com.`)
+	}
+	return parts[0]
 }
 
 func deployCmd(args []string) {
@@ -348,7 +359,7 @@ func deployCmd(args []string) {
 	fs := flag.NewFlagSet("deploy", flag.ExitOnError)
 	env := fs.String("env", df.env, "EB environment name")
 	app := fs.String("app", df.app, "EB application name")
-	bucket := fs.String("bucket", df.bucketURL, "S3 bucket URL (example: https://example-bucket.s3-us-east-1.amazonaws.com)")
+	bucket := fs.String("bucket", df.bucketURL, "S3 bucket URL (example: https://example-bucket.s3-us-west-2.amazonaws.com)")
 	label := fs.String("label", df.label, "label base name (suffix of -0, -1, -2, etc., is appended to ensure uniqueness)")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: ebc deploy [OPTS]\n")
@@ -390,8 +401,7 @@ func deployCmd(args []string) {
 		fs.Usage()
 	}
 
-	err = deploy(*dir, *env, *app, bucketURL, *label)
-	if err != nil {
+	if err := deploy(*dir, *env, *app, bucketURL, *label); err != nil {
 		log.Fatal("deploy failed: ", err)
 	}
 	fmt.Printf("Deploy initiated (took %s)\n", time.Since(t0))
@@ -399,15 +409,13 @@ func deployCmd(args []string) {
 
 func deploy(dir string, env, app string, bucketURL *url.URL, label string) error {
 	var buf bytes.Buffer
-	err := bundle(dir, &buf)
-	if err != nil {
-		return err
+	if err := bundle(dir, &buf); err != nil {
+		return fmt.Errorf("bundle failed: %s", err)
 	}
 
-	var fullLabel string
-	fullLabel, err = upload(&buf, app, bucketURL, label)
+	fullLabel, err := upload(&buf, app, bucketURL, label)
 	if err != nil {
-		return err
+		return fmt.Errorf("upload failed: %s", err)
 	}
 
 	p := &elasticbeanstalk.UpdateEnvironmentParams{
@@ -416,17 +424,16 @@ func deploy(dir string, env, app string, bucketURL *url.URL, label string) error
 	}
 
 	// Get env vars
-	err = setEnvVarsFromScript(dir, env, app, p)
-	if err != nil {
+	if err := setEnvVarsFromScript(dir, env, app, p); err != nil {
 		return err
 	}
 
 	if *verbose {
 		log.Printf("Updating environment %q to use version %q...", env, fullLabel)
 	}
-	err = ebClient.UpdateEnvironment(p)
-	if err != nil {
-		return err
+
+	if err := ebClient.UpdateEnvironment(p); err != nil {
+		return fmt.Errorf("update environment failed: %s", err)
 	}
 
 	return nil
