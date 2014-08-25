@@ -22,7 +22,7 @@ Beanstalk. You still must use eb to configure and initialize applications and
 environments. (If you want to deploy your whole git repository, just use the
 official [eb tool](http://aws.amazon.com/code/6752709412171743).)
 
-* Install ebc: `go get github.com/sourcegraph/go-elasticbeanstalk/cmd/ebc`
+* Install ebc: `go get github.com/sqs/go-elasticbeanstalk/cmd/ebc`
 * Install the [AWS Elastic Beanstalk eb command-line tool](http://aws.amazon.com/code/6752709412171743)
 
 ### Walkthrough
