@@ -1,14 +1,21 @@
 package elasticbeanstalk
 
 import (
-	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/kr/pretty"
 )
+
+func floatTime(t *testing.T, timeStr string) string {
+	tm := mustParseTime(t, timeStr).Round(time.Millisecond)
+	b, _ := Time{tm}.MarshalJSON()
+	return string(b)
+}
 
 func TestDescribeEnvironments(t *testing.T) {
 	setup()
@@ -16,14 +23,14 @@ func TestDescribeEnvironments(t *testing.T) {
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
-		io.WriteString(w, `
+		writeJSON(w, `
 {
-    "Environments": [
+    "DescribeEnvironmentsResponse": {"DescribeEnvironmentsResult": {"Environments": [
         {
             "ApplicationName": "app",
             "CNAME": "app-env.elasticbeanstalk.com",
-            "DateCreated": "2014-02-28T00:22:21.474Z",
-            "DateUpdated": "2014-02-28T00:33:47.684Z",
+            "DateCreated": `+floatTime(t, "2014-02-28T00:22:21.474Z")+`,
+            "DateUpdated": `+floatTime(t, "2014-02-28T00:33:47.684Z")+`,
             "EndpointURL": "awseb-e-n-AWSEBLoa-MILTONWOOF-1234567.us-west-2.elb.amazonaws.com",
             "EnvironmentId": "e-abcdef1234",
             "EnvironmentName": "app-env",
@@ -38,7 +45,7 @@ func TestDescribeEnvironments(t *testing.T) {
             "VersionLabel": "app-123"
         }
     ]
-}
+}}}
 `)
 	})
 
@@ -68,8 +75,100 @@ func TestDescribeEnvironments(t *testing.T) {
 		t.Errorf("DescribeEnvironments returned error: %v", err)
 	}
 
+	normTime(&want[0].DateCreated)
+	normTime(&want[0].DateUpdated)
+	log.Printf("%s != %s", want[0].DateCreated, envs[0].DateCreated)
 	if !reflect.DeepEqual(envs, want) {
-		t.Errorf("DescribeEnvironments returned %+v, want %+v", envs, want)
+		t.Errorf("DescribeEnvironments returned %+v, want %+v", asJSON(t, envs), asJSON(t, want))
+	}
+}
+
+func TestConfigurationSettings_Environ(t *testing.T) {
+	got := ConfigurationSettings{
+		{
+			OptionSettings: ConfigurationOptionSettings{
+				{Namespace: "aws:elasticbeanstalk:application:environment", OptionName: "k1", Value: "v1"},
+			},
+		},
+		{
+			OptionSettings: ConfigurationOptionSettings{
+				{Namespace: "aws:elasticbeanstalk:application:environment", OptionName: "k2", Value: "v2"},
+			},
+		},
+	}.Environ()
+	want := map[string]string{"k1": "v1", "k2": "v2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestDescribeConfigurationSettings(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		writeJSON(w, `
+{
+    "DescribeConfigurationSettingsResponse": {"DescribeConfigurationSettingsResult": {"ConfigurationSettings": [
+        {
+            "ApplicationName": "app",
+            "DateCreated": `+floatTime(t, "2014-02-28T00:22:21.474Z")+`,
+            "DateUpdated": `+floatTime(t, "2014-02-28T00:33:47.684Z")+`,
+            "DeploymentStatus": "deployed",
+            "Description": "d",
+            "EnvironmentName": "app-env",
+            "OptionSettings": [
+                {
+                    "Namespace": "n",
+                    "OptionName": "o",
+                    "Value": "v"
+                }
+            ],
+            "SolutionStackName": "64bit Amazon Linux 2013.09 running Node.js",
+            "TemplateName": "t"
+        }
+    ]
+}}}
+`)
+	})
+
+	want := ConfigurationSettings{
+		{
+			ApplicationName:  "app",
+			DateCreated:      mustParseTime(t, "2014-02-28T00:22:21.474Z"),
+			DateUpdated:      mustParseTime(t, "2014-02-28T00:33:47.684Z"),
+			DeploymentStatus: "deployed",
+			Description:      "d",
+			EnvironmentName:  "app-env",
+			OptionSettings: ConfigurationOptionSettings{
+				{Namespace: "n", OptionName: "o", Value: "v"},
+			},
+			SolutionStackName: "64bit Amazon Linux 2013.09 running Node.js",
+			TemplateName:      "t",
+		},
+	}
+
+	cs, err := client.DescribeConfigurationSettings(&DescribeConfigurationSettingsParams{})
+	if err != nil {
+		t.Errorf("DescribeConfigurationSettings returned error: %v", err)
+	}
+
+	normTime(&want[0].DateCreated)
+	normTime(&want[0].DateUpdated)
+	if !reflect.DeepEqual(cs, want) {
+		t.Errorf("DescribeConfigurationSettings returned %v, want %v", asJSON(t, cs), asJSON(t, want))
+	}
+}
+
+func TestConfigurationOptionSettings_Environ(t *testing.T) {
+	got := ConfigurationOptionSettings{
+		{Namespace: "aws:elasticbeanstalk:application:environment", OptionName: "k1", Value: "v1"},
+		{Namespace: "aws:elasticbeanstalk:application:environment", OptionName: "k2", Value: "v2"},
+	}.Environ()
+	want := map[string]string{"k1": "v1", "k2": "v2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }
 

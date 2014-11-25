@@ -1,6 +1,8 @@
 package elasticbeanstalk
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -39,16 +41,34 @@ func teardown() {
 	server.Close()
 }
 
+func writeJSON(w http.ResponseWriter, jsonStr string) {
+	w.Header().Set("content-type", "application/json; charset=utf-8")
+	io.WriteString(w, jsonStr)
+}
+
 func testMethod(t *testing.T, r *http.Request, want string) {
 	if want != r.Method {
 		t.Errorf("Request method = %v, want %v", r.Method, want)
 	}
 }
 
-func mustParseTime(t *testing.T, timeStr string) time.Time {
+func mustParseTime(t *testing.T, timeStr string) Time {
 	tm, err := time.Parse(time.RFC3339Nano, timeStr)
 	if err != nil {
 		t.Fatal("time.Parse(time.RFC3339Nano, %q) returned error: %v", timeStr, err)
 	}
-	return tm
+	tm = tm.Round(time.Millisecond)
+	return Time{tm}
+}
+
+func asJSON(t *testing.T, v interface{}) string {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		t.Fatal(t)
+	}
+	return string(b)
+}
+
+func normTime(t *Time) {
+	*t = Time{t.Time.UTC().Round(time.Second)}
 }

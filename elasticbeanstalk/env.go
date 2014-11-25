@@ -3,7 +3,6 @@ package elasticbeanstalk
 import (
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/google/go-querystring/query"
 )
@@ -24,8 +23,8 @@ type DescribeEnvironmentsParams struct {
 type EnvironmentDescription struct {
 	ApplicationName   string
 	CNAME             string
-	DateCreated       time.Time
-	DateUpdated       time.Time
+	DateCreated       Time
+	DateUpdated       Time
 	Description       string
 	EndpointURL       string
 	EnvironmentId     string
@@ -60,24 +59,109 @@ func (c *Client) DescribeEnvironments(params *DescribeEnvironmentsParams) ([]*En
 		return nil, err
 	}
 	var o struct {
-		Environments []*EnvironmentDescription
+		DescribeEnvironmentsResponse struct {
+			DescribeEnvironmentsResult struct {
+				Environments []*EnvironmentDescription
+			}
+		}
 	}
 	err = c.Do("GET", "DescribeEnvironments", v, &o)
-	return o.Environments, err
+	return o.DescribeEnvironmentsResponse.DescribeEnvironmentsResult.Environments, err
+}
+
+// A ConfigurationSettingsDescription describes the settings for a
+// configuration.
+//
+// See
+// http://docs.aws.amazon.com/elasticbeanstalk/latest/APIReference/API_ConfigurationSettingsDescription.html.
+type ConfigurationSettingsDescription struct {
+	ApplicationName   string
+	DateCreated       Time
+	DateUpdated       Time
+	DeploymentStatus  string
+	Description       string `json:",omitempty"`
+	EnvironmentName   string
+	OptionSettings    ConfigurationOptionSettings
+	SolutionStackName string
+	TemplateName      string `json:",omitempty"`
+}
+
+// A ConfigurationSettings is a list of
+// ConfigurationSettingsDescription that provides easy access to
+// combined configuration settings.
+type ConfigurationSettings []*ConfigurationSettingsDescription
+
+// Environ returns a map of all environment variables set in the
+// configuration settings.
+func (s ConfigurationSettings) Environ() map[string]string {
+	m := map[string]string{}
+	for _, csd := range s {
+		m0 := csd.OptionSettings.Environ()
+		for k, v := range m0 {
+			m[k] = v
+		}
+	}
+	return m
+}
+
+// DescribeConfigurationSettingsParams specifies parameters for a
+// DescribeConfigurationSettings request.
+//
+// See
+// http://docs.aws.amazon.com/elasticbeanstalk/latest/APIReference/API_DescribeConfigurationSettings.html.
+type DescribeConfigurationSettingsParams struct {
+	ApplicationName string
+	EnvironmentName string `url:",omitempty"`
+	TemplateName    string `url:",omitempty"`
+}
+
+func (c *Client) DescribeConfigurationSettings(params *DescribeConfigurationSettingsParams) (ConfigurationSettings, error) {
+	v, err := query.Values(params)
+	if err != nil {
+		return nil, err
+	}
+	var o struct {
+		DescribeConfigurationSettingsResponse struct {
+			DescribeConfigurationSettingsResult struct {
+				ConfigurationSettings []*ConfigurationSettingsDescription
+			}
+		}
+	}
+	err = c.Do("GET", "DescribeConfigurationSettings", v, &o)
+	return o.DescribeConfigurationSettingsResponse.DescribeConfigurationSettingsResult.ConfigurationSettings, err
+}
+
+// A ConfigurationOptionSettings is a list of
+// ConfigurationOptionSetting that provides easy access to environment
+// variables specified within.
+type ConfigurationOptionSettings []ConfigurationOptionSetting
+
+// Environ returns a map of all environment variables set in the
+// option settings.
+func (opts ConfigurationOptionSettings) Environ() map[string]string {
+	m := map[string]string{}
+	for _, opt := range opts {
+		if opt.Namespace == envVarNamespace {
+			m[opt.OptionName] = opt.Value
+		}
+	}
+	return m
 }
 
 type UpdateEnvironmentParams struct {
 	EnvironmentName string
 	VersionLabel    string `url:",omitempty"`
 
-	OptionSettings []ConfigurationOptionSetting `url:"-"`
+	OptionSettings ConfigurationOptionSettings `url:"-"`
 }
+
+const envVarNamespace = "aws:elasticbeanstalk:application:environment"
 
 // AddEnv adds the specified environment variable name and value to
 // OptionSettings.
 func (p *UpdateEnvironmentParams) AddEnv(name, value string) {
 	p.OptionSettings = append(p.OptionSettings, ConfigurationOptionSetting{
-		Namespace:  "aws:elasticbeanstalk:application:environment",
+		Namespace:  envVarNamespace,
 		OptionName: name,
 		Value:      value,
 	})
