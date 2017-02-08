@@ -9,11 +9,7 @@ This repository contains:
 
 [**Documentation on Sourcegraph**](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk)
 
-[![docs examples](https://sourcegraph.com/api/repos/github.com/sqs/go-elasticbeanstalk/badges/docs-examples.png)](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk)
-[![Total views](https://sourcegraph.com/api/repos/github.com/sqs/go-elasticbeanstalk/counters/views.png)](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk)
-[![status](https://sourcegraph.com/api/repos/github.com/sqs/go-elasticbeanstalk/badges/status.png)](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk)
-[![authors](https://sourcegraph.com/api/repos/github.com/sqs/go-elasticbeanstalk/badges/authors.png)](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk)
-[![dependencies](https://sourcegraph.com/api/repos/github.com/sqs/go-elasticbeanstalk/badges/dependencies.png)](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk)
+[![elasticbeanstalk](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk/-/badge.svg)](https://sourcegraph.com/github.com/sqs/go-elasticbeanstalk?badge)
 
 ## ebc command-line client for AWS Elastic Beanstalk
 
